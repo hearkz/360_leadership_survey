@@ -1,0 +1,161 @@
+---
+title: "Leadership Survey"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.height=10, fig.width=10)
+```
+
+```{r install_packages, include=FALSE, warning=FALSE}
+
+library(tidyverse)
+library(redcapAPI)
+library(sjlabelled)
+library(sjPlot)
+library(stringr)
+library(sjmisc)
+
+```
+
+```{r connect_project, include=FALSE}
+
+rcon <- redcapConnection("https://redcap.barwonhealth.org.au/redcap/api/", "50328059735AE7FA70EDC85A422A11D7")
+if (FALSE){
+        
+  myProject <- redcapProjectInfo(rcon)
+  
+  the_data <- exportRecords(rcon, proj=myProject)
+  
+
+meta_data <- exportMetaData(rcon)
+
+data <- as_tibble(the_data)
+}
+
+```
+
+```{r select_fields, include=FALSE, warning=FALSE}
+
+
+score <- data %>%
+        select(
+                person_type,
+                ends_with("_s")
+                )
+
+tm_score <- score %>%
+        group_by(person_type) %>% 
+        summarise_all(funs(mean))
+
+question_text <- meta_data %>% 
+        filter(
+                
+                field_name == "person_type"|
+                str_detect(field_name, "[_s]$")
+                ) %>% 
+        select(field_label) %>% 
+        pull()
+
+colnames(tm_score) <- question_text
+
+
+
+tm_score <- tm_score %>% 
+        rename(Role = `For the purposes of this survey, 'the leader' is the person who this survey is about. It may be a person who is in a specialist position with no direct reports, however they will at times have had requirements to lead others. \nPlease specify your position in this survey:`)
+
+
+long_score <- tm_score %>%
+        gather(key = question, value = score, -1) %>% 
+        mutate(Role = case_when(
+                Role == "Direct report, peer or other working partner to the leader in this survey" ~ "Direct report, peer, other working partner",
+                TRUE ~ as.character(Role)
+        ),
+        position = 1)
+
+
+ggplot(long_score, aes(score, question, colour = Role))+
+        geom_point(stat = "identity") +
+        theme(legend.position = "bottom",
+              legend.justification = "left",
+              legend.key.size = unit(0.5, "cm"),
+              legend.text = element_text(size = 10),
+              legend.title = element_text(size = 10, vjust = 0))+
+        scale_y_discrete(labels = function(x) str_wrap(x, width = 100))
+
+global_labeller <- labeller(
+  question = label_wrap_gen(100)
+)
+
+```
+
+```{r bar, include=FALSE}
+ggplot(long_score, aes(Role, score, colour = Role, fill = Role)) +
+        geom_bar(stat = "identity") +
+               facet_grid(question ~., switch = "y", labeller = label_wrap_gen(70)) +
+        coord_flip() +
+        #guides(colour = "colorbar", size = "legend", shape = "legend") +
+        theme(legend.position = c(0.9, 1),
+              legend.justification = c(1, -0.2),
+              plot.margin = unit(c(1, 0.5, 0.5, 1), "cm"),
+              legend.direction = "horizontal",
+              legend.key.size = unit(10, "point"),
+              legend.text = element_text(size = 8),
+              legend.title = element_blank(),
+              axis.text.y = element_blank(),
+              axis.title.x = element_blank(),
+              axis.title.y = element_blank(),
+              axis.ticks = element_blank(),
+              strip.text.y = element_text(angle=180, hjust = 0.5),
+              strip.placement = "outside")
+        ggsave("bar_chart.png")
+
+```
+
+
+
+```{r points, include=FALSE}
+
+ggplot(long_score, aes(score, position, colour = Role))+
+        geom_point(size = 3) +
+        facet_grid(question ~., switch = "y", labeller = label_wrap_gen(100)) +
+        theme(legend.position = "top",
+              legend.direction = "horizontal",
+              legend.key.size = unit(4, "point"),
+              legend.justification = c(1, 0),
+              legend.text = element_text(size = 10),
+              legend.title = element_blank(),
+              axis.text.y = element_blank(),
+              axis.title.y = element_blank(),
+              axis.ticks.y = element_blank(),
+              strip.text.y = element_text(angle=180),
+              strip.placement = "outside") +
+        scale_x_continuous(limits = c(1,5), breaks = c(1:5) )
+
+
+
+
+
+```
+
+
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

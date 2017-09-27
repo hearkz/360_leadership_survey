@@ -1,10 +1,13 @@
 ---
 title: "Leadership Survey"
-output: html_document
+params:
+  Key: enter key
+output:
+  word_document: default
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, fig.height=10, fig.width=10)
+knitr::opts_chunk$set(echo = TRUE, fig.height=22, fig.width=20)
 ```
 
 ```{r install_packages, include=FALSE, warning=FALSE}
@@ -20,8 +23,13 @@ library(sjmisc)
 
 ```{r connect_project, include=FALSE}
 
-rcon <- redcapConnection("https://redcap.barwonhealth.org.au/redcap/api/", "50328059735AE7FA70EDC85A422A11D7")
-if (FALSE){
+token <- params$Key
+
+
+
+rcon <- redcapConnection("https://redcap.barwonhealth.org.au/redcap/api/", token)
+
+#if (FALSE){
         
   myProject <- redcapProjectInfo(rcon)
   
@@ -31,7 +39,8 @@ if (FALSE){
 meta_data <- exportMetaData(rcon)
 
 data <- as_tibble(the_data)
-}
+
+#}
 
 ```
 
@@ -50,7 +59,6 @@ tm_score <- score %>%
 
 question_text <- meta_data %>% 
         filter(
-                
                 field_name == "person_type"|
                 str_detect(field_name, "[_s]$")
                 ) %>% 
@@ -90,7 +98,7 @@ global_labeller <- labeller(
 ```
 
 ```{r bar, include=FALSE}
-ggplot(long_score, aes(Role, score, colour = Role, fill = Role)) +
+bar <- ggplot(long_score, aes(Role, score, colour = Role, fill = Role)) +
         geom_bar(stat = "identity") +
                facet_grid(question ~., switch = "y", labeller = label_wrap_gen(70)) +
         coord_flip() +
@@ -99,22 +107,28 @@ ggplot(long_score, aes(Role, score, colour = Role, fill = Role)) +
               legend.justification = c(1, -0.2),
               plot.margin = unit(c(1, 0.5, 0.5, 1), "cm"),
               legend.direction = "horizontal",
-              legend.key.size = unit(10, "point"),
-              legend.text = element_text(size = 8),
+              legend.key.size = unit(20, "point"),
+              legend.text = element_text(size = 24),
               legend.title = element_blank(),
               axis.text.y = element_blank(),
+              axis.text.x = element_text(size = 24),
               axis.title.x = element_blank(),
               axis.title.y = element_blank(),
               axis.ticks = element_blank(),
-              strip.text.y = element_text(angle=180, hjust = 0.5),
+              strip.text.y = element_text(angle=180, hjust = 0.5, size=24),
               strip.placement = "outside")
-        ggsave("bar_chart.png")
+        #ggsave("bar_chart.png")
+
+```
+
+```{r plot_bar, message=FALSE, echo=FALSE}
+bar
 
 ```
 
 
 
-```{r points, include=FALSE}
+```{r points, eval=FALSE, echo=FALSE}
 
 ggplot(long_score, aes(score, position, colour = Role))+
         geom_point(size = 3) +
@@ -137,25 +151,3 @@ ggplot(long_score, aes(score, position, colour = Role))+
 
 
 ```
-
-
-
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
-```
-
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

@@ -1,0 +1,274 @@
+---
+title: "Leadership Survey"
+params:
+  Key: enter key
+output:
+  word_document:
+    df_print: kable
+    reference_docx: barwon_health_template_01.docx
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.height=22, fig.width=20, warning = FALSE)
+```
+
+```{r install_packages, include=FALSE, warning=FALSE}
+
+library(tidyverse)
+library(REDCapR)
+library(RCurl)
+library(xml2)
+
+
+token <- params$Key
+
+
+bh_redcap <- "https://redcap.barwonhealth.org.au/redcap/api/" #url of Barwon Health REDCap
+
+
+
+result <- postForm(
+    uri=bh_redcap,
+    token=token,
+    content='project',
+    format='xml',
+    returnFormat='xml'
+)
+
+x <- read_xml(result)
+
+y <- xml_find_all(x, "project_title")
+
+project_title <- trimws(xml_text(y))
+
+leader <- str_replace(project_title, "Leader's 360 Survey For ", "")
+
+
+```
+
+
+```{r connect_project, include=FALSE}
+
+data <- redcap_read(redcap_uri = bh_redcap, token = token,  raw_or_label = "raw", verbose = FALSE)$data
+
+meta_data <- redcap_metadata_read(redcap_uri = bh_redcap, token = token, verbose = FALSE)$data[c("field_name", "field_label", "field_annotation")]
+
+
+
+```
+
+```{r select_question_groups, include=FALSE, warning=FALSE}
+
+
+matrix_group <- meta_data %>% 
+        filter(field_annotation %in% c("leadership", "safety", "values")) %>% 
+        select(field_annotation,
+               field_label)
+
+leadership <- matrix_group %>% 
+        filter(field_annotation == "leadership")
+
+safety <- matrix_group %>% 
+        filter(field_annotation == "safety")
+
+values <- matrix_group %>% 
+        filter(field_annotation == "values")
+
+comments <- meta_data %>% 
+        filter(str_detect(field_name, "comment_tm"))
+
+
+```
+
+
+```{r select_fields, include=FALSE, warning=FALSE}
+
+
+score <- data %>%
+        select(
+                person_type,
+                ends_with("_s")
+                ) %>% 
+        mutate_at("person_type", funs(case_when(. == 1 ~ "Leader",
+                                                . == 2 ~ "Manager",
+                                                . == 3 ~ "Direct report",
+                                                TRUE ~ NA_character_)))
+
+tm_score <- score %>%
+        group_by(person_type) %>% 
+        summarise_all(funs(mean))
+
+question_text <- meta_data %>% 
+        filter(
+                field_name == "person_type"|
+                str_detect(field_name, "[_s]$")
+                ) %>% 
+        select(field_label) %>% 
+        pull()
+
+colnames(tm_score) <- question_text
+
+
+
+tm_score <- tm_score %>% 
+        rename(Role = `For the purposes of this survey, 'the leader' is the person who this survey is about. It may be a person who is in a specialist position with no direct reports, however they will at times have had requirements to lead others. \nPlease specify your position in this survey:`)
+
+
+
+long_score <- tm_score %>%
+        gather(key = question, value = score, -1) %>% 
+        mutate(Role = case_when(
+                Role == "Direct report, peer or other working partner to the leader in this survey" ~ "Direct report, peer, other working partner",
+                TRUE ~ as.character(Role)
+        ),
+        position = 1) %>% 
+        left_join(matrix_group, by = c("question" = "field_label"))
+
+values_long_score <-  long_score %>% 
+        filter(field_annotation == "values")
+
+safety_long_score <-  long_score %>% 
+        filter(field_annotation == "safety")
+
+leadership_long_score <-  long_score %>% 
+        filter(field_annotation == "leadership")
+
+values_comment <- data %>%
+        select(bh_values_comment_tm) %>% 
+        filter(!is.na(bh_values_comment_tm)) %>%
+        mutate(bh_values_comment_tm = str_c("\"", bh_values_comment_tm, "\"")) %>% 
+        rename(`Values Comment` = bh_values_comment_tm)
+
+leadership_comment <- data %>%
+        select(bh_leadership_comment_tm) %>%
+        filter(!is.na(bh_leadership_comment_tm)) %>%
+        mutate(bh_leadership_comment_tm = str_c("\"", bh_leadership_comment_tm, "\"")) #%>% 
+        #rename(`Leadership Comments` = bh_leadership_comment_tm)
+
+safety_comment <- data %>% 
+        select(bh_sq_comment_tm) %>% 
+        filter(!is.na(bh_sq_comment_tm)) %>%
+        mutate(bh_sq_comment_tm = str_c("\"", bh_sq_comment_tm, "\"")) %>% 
+        rename(`Safety and Quality Comments` = bh_sq_comment_tm)
+
+
+```
+
+```{r create_plots, include=FALSE, fig.height=10, fig.width=8}
+value_bar <- ggplot(values_long_score, aes(Role, score, colour = Role, fill = Role)) +
+        geom_bar(stat = "identity") +
+               facet_grid(question ~., switch = "y", labeller = label_wrap_gen(60)) +
+        coord_flip() +
+        #guides(colour = "colorbar", size = "legend", shape = "legend") +
+        theme(legend.position = c(1, 1),
+              legend.justification = c(1, -0.2),
+              plot.margin = unit(c(1, 0.5, 0.5, 1), "cm"),
+              legend.direction = "horizontal",
+              #legend.key.size = unit(10, "point"),
+              #legend.text = element_text(size = 14),
+              legend.title = element_blank(),
+              axis.text.y = element_blank(),
+              #axis.text.x = element_text(size = 14),
+              axis.title.x = element_blank(),
+              axis.title.y = element_blank(),
+              axis.ticks = element_blank(),
+              strip.text.y = element_text(angle=180, hjust = 0.5, size = 12),
+              strip.placement = "outside")
+        #ggsave("bar_chart.png")
+
+leadership_bar <- ggplot(leadership_long_score, aes(Role, score, colour = Role, fill = Role)) +
+        geom_bar(stat = "identity") +
+               facet_grid(question ~., switch = "y", labeller = label_wrap_gen(60)) +
+        coord_flip() +
+        #guides(colour = "colorbar", size = "legend", shape = "legend") +
+        theme(legend.position = c(1, 1),
+              legend.justification = c(1, -0.2),
+              plot.margin = unit(c(1, 0.5, 0.5, 1), "cm"),
+              legend.direction = "horizontal",
+              #legend.key.size = unit(10, "point"),
+              #legend.text = element_text(size = 14),
+              legend.title = element_blank(),
+              axis.text.y = element_blank(),
+              #axis.text.x = element_text(size = 14),
+              axis.title.x = element_blank(),
+              axis.title.y = element_blank(),
+              axis.ticks = element_blank(),
+              strip.text.y = element_text(angle=180, hjust = 0.5, size = 12),
+              strip.placement = "outside")
+
+safety_bar <- ggplot(safety_long_score, aes(Role, score, colour = Role, fill = Role)) +
+        geom_bar(stat = "identity") +
+               facet_grid(question ~., switch = "y", labeller = label_wrap_gen(60)) +
+        coord_flip() +
+        #guides(colour = "colorbar", size = "legend", shape = "legend") +
+        theme(legend.position = c(1, 1),
+              legend.justification = c(1, -0.2),
+              plot.margin = unit(c(1, 0.5, 0.5, 1), "cm"),
+              legend.direction = "horizontal",
+              #legend.key.size = unit(10, "point"),
+              #legend.text = element_text(size = 14),
+              legend.title = element_blank(),
+              axis.text.y = element_blank(),
+              #axis.text.x = element_text(size = 14),
+              axis.title.x = element_blank(),
+              axis.title.y = element_blank(),
+              axis.ticks = element_blank(),
+              strip.text.y = element_text(angle=180, hjust = 0.5, size = 12),
+              strip.placement = "outside")
+
+```
+# `r leader`
+
+## Barwon Health Values
+
+```{r value_bar, message=FALSE, echo=FALSE, fig.height=5, fig.width=8}
+
+value_bar
+
+```
+
+### Value comments
+
+```{r values_comment, message=FALSE, echo=FALSE, results="asis"}
+
+cat(values_comment$`Values Comment`, sep = "\n\n")
+
+```
+
+## Leadership at Barwon Health
+
+
+```{r leadership_bar, message=FALSE, echo=FALSE, fig.height=5, fig.width=8}
+
+leadership_bar
+
+```
+
+### Leadership comments
+```{r leadership_comment, message=FALSE, echo=FALSE, results='asis'}
+
+#knitr::kable(leadership_comment)
+
+cat(leadership_comment$bh_leadership_comment_tm, sep = "\n\n")
+
+```
+
+
+## Safety and Quality at Barwon Health
+
+```{r safety_bar, message=FALSE, echo=FALSE, fig.height=5, fig.width=8}
+
+safety_bar
+
+```
+
+### Safety and Quality comment
+
+```{r ft_safety, results='asis', echo=FALSE}
+
+cat(safety_comment$`Safety and Quality Comments`, sep = "\n\n")
+
+
+```
+
+
